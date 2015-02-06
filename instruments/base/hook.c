@@ -44,47 +44,13 @@ void inline hook_cacheflush(unsigned int begin, unsigned int end)
 		);
 }
 
-int hook_direct(struct hook_t *h, unsigned int addr, void *hookf)
+int hook_direct(struct hook_t *h,int addr, void *hook_arm, void *hook_thumb)
 {
 	int i;
-	
-	log("addr  = %x\n", addr)
-	log("hookf = %x\n", hookf)
+	log("hooking: = 0x%x ", addr);
+	//strncpy(h->name, funcname, sizeof(h->name)-1);
 
-	if ((addr % 4 == 0 && (unsigned int)hookf % 4 != 0) || (addr % 4 != 0 && (unsigned int)hookf % 4 == 0))
-		log("addr 0x%x and hook 0x%x\n don't match!\n", addr, hookf)
-	
-	//log("ARM\n")
-	h->thumb = 0;
-	h->patch = (unsigned int)hookf;
-	h->orig = addr;
-	log("orig = %x\n", h->orig)
-	h->jump[0] = 0xe59ff000; // LDR pc, [pc, #0]
-	h->jump[1] = h->patch;
-	h->jump[2] = h->patch;
-	for (i = 0; i < 3; i++)
-		h->store[i] = ((int*)h->orig)[i];
-	for (i = 0; i < 3; i++)
-		((int*)h->orig)[i] = h->jump[i];
-	
-	hook_cacheflush((unsigned int)h->orig, (unsigned int)h->orig+sizeof(h->jumpt));
-	return 1;
-}
-
-int hook(struct hook_t *h, int pid, char *libname, char *funcname, void *hook_arm, void *hook_thumb)
-{
-	unsigned long int addr;
-	int i;
-
-	if (find_name(pid, funcname, libname, &addr) < 0) {
-		log("can't find: %s\n", funcname)
-		return 0;
-	}
-	
-	log("hooking:   %s = 0x%x ", funcname, addr)
-	strncpy(h->name, funcname, sizeof(h->name)-1);
-
-	if (addr % 4 == 0) {
+	if (addr % 4 == 0 && 1==0) {
 		log("ARM using 0x%x\n", hook_arm)
 		h->thumb = 0;
 		h->patch = (unsigned int)hook_arm;
@@ -103,23 +69,23 @@ int hook(struct hook_t *h, int pid, char *libname, char *funcname, void *hook_ar
 		h->thumb = 1;
 		log("THUMB using 0x%x\n", hook_thumb)
 		h->patch = (unsigned int)hook_thumb;
-		h->orig = addr;	
+		h->orig = addr;
 		h->jumpt[1] = 0xb4;
-		h->jumpt[0] = 0x30; // push {r4,r5}
-		h->jumpt[3] = 0xa5;
-		h->jumpt[2] = 0x03; // add r5, pc, #12
-		h->jumpt[5] = 0x68;
-		h->jumpt[4] = 0x2d; // ldr r5, [r5]
-		h->jumpt[7] = 0xb0;
-		h->jumpt[6] = 0x02; // add sp,sp,#8
-		h->jumpt[9] = 0xb4;
-		h->jumpt[8] = 0x20; // push {r5}
-		h->jumpt[11] = 0xb0;
-		h->jumpt[10] = 0x81; // sub sp,sp,#4
-		h->jumpt[13] = 0xbd;
-		h->jumpt[12] = 0x20; // pop {r5, pc}
-		h->jumpt[15] = 0x46;
-		h->jumpt[14] = 0xaf; // mov pc, r5 ; just to pad to 4 byte boundary
+		h->jumpt[0] = 0x20; // push {r5}
+		h->jumpt[3] = 0xb4;
+		h->jumpt[2] = 0x20; // push {r5}
+		h->jumpt[5] = 0xa5;
+		h->jumpt[4] = 0x02; // add r5, pc, 8
+		h->jumpt[7] = 0x68;
+		h->jumpt[6] = 0x2d; // ldr r5, [r5]
+		h->jumpt[9] = 0xb0;
+		h->jumpt[8] = 0x02; // add sp,sp,#8
+		h->jumpt[11] = 0xb4;
+		h->jumpt[10] = 0x20; // push {r5}
+		h->jumpt[13] = 0xb0;
+		h->jumpt[12] = 0x81; // sub sp,sp,#4
+		h->jumpt[15] = 0xbd;
+		h->jumpt[14] = 0x20; // pop {r5, pc}
 		memcpy(&h->jumpt[16], (unsigned char*)&h->patch, sizeof(unsigned int));
 		unsigned int orig = addr - 1; // sub 1 to get real address
 		for (i = 0; i < 20; i++) {
@@ -135,6 +101,24 @@ int hook(struct hook_t *h, int pid, char *libname, char *funcname, void *hook_ar
 	hook_cacheflush((unsigned int)h->orig, (unsigned int)h->orig+sizeof(h->jumpt));
 	return 1;
 }
+
+int hook(struct hook_t *h, int pid, char *libname, char *funcname, void *hook_arm, void *hook_thumb)
+{
+	unsigned long int addr;
+	int i;
+
+	if (find_name(pid, funcname, libname, &addr) < 0) {
+		log("can't find: %s\n", funcname)
+		return 0;
+	}
+
+	log("hooking:   %s = 0x%x ", funcname, addr)
+	strncpy(h->name, funcname, sizeof(h->name)-1);
+
+	hook_direct(h, addr, hook_arm, hook_arm);
+	return 1;
+}
+
 
 void hook_precall(struct hook_t *h)
 {
